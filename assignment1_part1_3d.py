@@ -8,9 +8,13 @@ import math
 import os
 import sys
 import random
+from scipy.spatial import KDTree
 
 UR5_JOINT_INDICES = [0, 1, 2]
-
+# parameter
+N_SAMPLE = 500  # number of sample_points
+N_KNN = 10  # number of edge from one sampled point
+MAX_EDGE_LEN = 30.0  # [m] Maximum edge length
 
 def set_joint_positions(body, joints, values):
     assert len(joints) == len(values)
@@ -38,146 +42,156 @@ def get_args():
 #your implementation starts here
 #refer to the handout about what the these functions do and their return type
 ###############################################################################
-class RRT_Node:
-    def __init__(self, conf):
-        self.conf = np.array(conf)
-        self.parent = None
+class Node:
+    def __init__(self, conf, cost, parent_index):
+        self.conf = conf
+        self.cost = cost
+        self.parent_index = parent_index
 
-    def set_parent(self, parent):
-        self.parent = parent
-
-    def add_child(self, child):
-        self.child = child
-
-def sample_conf():
-    q_rand = RRT_Node([np.random.uniform(-2*np.pi, 2*np.pi),
-                       np.random.uniform(-2*np.pi, 2*np.pi),
-                       np.random.uniform(-np.pi, np.pi)])
-    # q_rand = RRT_Node([np.random.uniform(goal_conf[0]-1.6, goal_conf[0]+.1),
-    #                    np.random.uniform(goal_conf[1]-.1, goal_conf[1]+.5),
-    #                    np.random.uniform(goal_conf[2]-.1, goal_conf[2]+.5)])
-    flag = np.all(np.isclose(goal_conf, q_rand.conf, rtol=.05))
-    return q_rand, flag
-
-def find_nearest(rand_node, node_list):
-    temp_dist = []
-    for i in range(len(node_list)):
-        node = node_list[i]
-        dist = np.linalg.norm(rand_node.conf-node.conf)
-        temp_dist.append(dist)
-    return node_list[temp_dist.index(min(temp_dist))]
-        
-def steer_to(rand_node, nearest_node):
-    diff = rand_node.conf - nearest_node.conf
+def steer_to(rand_conf, nearest_conf):
+    rand_conf = np.array(rand_conf)
+    nearest_conf = np.array(nearest_conf)
+    diff = rand_conf - nearest_conf
     L = np.linalg.norm(diff)
     n = math.floor(L/.05)
     if n > 0:
         dir = .05*diff/L
-    colide = collision_fn(rand_node.conf)
+    colide = collision_fn(rand_conf)
     i = 0
     while i < n:
         if colide == True: break
         i+=1
-        new_node = i*dir+nearest_node.conf
+        new_node = i*dir+nearest_conf
         colide = collision_fn(new_node)
     return colide
 
+def prm_planning(start_conf, goal_conf):
+    """
+    Run probabilistic road map planning
 
-def steer_to_until(rand_node, nearest_node):
-    diff = rand_node.conf - nearest_node.conf
-    L = np.linalg.norm(diff)
-    dir = .05*diff/L
-    n = math.floor(L / .05)
-    colide = False
-    i = 0
-    while i < n:
-        if colide == True: break
-        i+=1
-        new_node = i*dir+nearest_node.conf
-        colide = collision_fn(new_node)
-    new_node = RRT_Node((i-1)*dir+nearest_node.conf)
-    return new_node
+    :param start_x: start x position
+    :param start_y: start y position
+    :param goal_x: goal x position
+    :param goal_y: goal y position
+    :param obstacle_x_list: obstacle x positions
+    :param obstacle_y_list: obstacle y positions
+    :param robot_radius: robot radius
+    :param rng: (Optional) Random generator
+    :return:
+    """
+    sample_x, sample_y, sample_z = sample_points(start_conf, goal_conf)
 
-def RRT():
-    ###############################################
-    # TODO your code to implement the rrt algorithm
-    ###############################################
-    T = [RRT_Node(start_conf)]
-    pathFound = False
-    # for i in range(10**5):
-    while pathFound == False:
-        q_rand, flag = sample_conf()
-        q_near = find_nearest(q_rand, T)
-        colide = steer_to(q_rand, q_near)
+    road_map = generate_road_map(sample_x, sample_y, sample_z)
 
+    rx, ry, rz = dijkstra_planning(start_conf, goal_conf, road_map, sample_x, sample_y, sample_z)
+
+    path_conf = []
+    for i in reversed(range(len(rx))):
+        path_conf.append([rx[i], ry[i], rz[i]])
+    return path_conf
+
+def dijkstra_planning(start_conf, goal_conf, road_map, sample_x, sample_y, sample_z):
+    open_set, closed_set = dict(), dict()
+    start_node = Node(start_conf, 0, -1)
+    goal_node = Node(goal_conf, 0, -1)
+    open_set[len(road_map) - 2] = start_node
+    path_found = True
+    while True:
+        if not open_set:
+            print("Cannot find path")
+            path_found = False
+            break
+
+        c_id = min(open_set, key=lambda o: open_set[o].cost)
+        current = open_set[c_id]
+
+        if c_id == (len(road_map) - 1):
+            print("goal is found!")
+            goal_node.parent_index = current.parent_index
+            goal_node.cost = current.cost
+            break
+
+        del open_set[c_id]
+        # Add it to the closed set
+        closed_set[c_id] = current
+
+        for i in range(len(road_map[c_id])):
+            n_id = road_map[c_id][i]
+            dx = sample_x[n_id] - current.conf[0]
+            dy = sample_y[n_id] - current.conf[1]
+            dz = sample_z[n_id] - current.conf[2]
+            d = math.hypot(dx, dy, dz)
+            node = Node([sample_x[n_id], sample_y[n_id], sample_z[n_id]]
+                        , current.cost + d, c_id)
+            if n_id in closed_set:
+                continue
+            if n_id in open_set:
+                if open_set[n_id].cost > node.cost:
+                    open_set[n_id].cost = node.cost
+                    open_set[n_id].parent_index = c_id
+            else:
+                open_set[n_id] = node
+
+    if path_found is False:
+        return [], [], []
+    rx, ry, rz = [goal_node.conf[0]], [goal_node.conf[1]], [goal_node.conf[2]]
+    parent_index = goal_node.parent_index
+    while parent_index != -1:
+        n = closed_set[parent_index]
+        rx.append(n.conf[0])
+        ry.append(n.conf[1])
+        rz.append(n.conf[2])
+        parent_index = n.parent_index
+    return rx, ry, rz
+
+
+
+def sample_points(start_conf, goal_conf):
+    sample_x, sample_y, sample_z = [], [], []
+    while len(sample_x) <= N_SAMPLE:
+        # tx = np.random.uniform(-2*np.pi, 2*np.pi)
+        # ty = np.random.uniform(-2*np.pi, 2*np.pi)
+        # tz = np.random.uniform(-np.pi, np.pi)
+        tx = np.random.uniform(goal_conf[0]-1.6, goal_conf[0]+.1)
+        ty = np.random.uniform(goal_conf[1]-.1, goal_conf[1]+.5)
+        tz = np.random.uniform(goal_conf[2]-.1, goal_conf[2]+.5)
+        rand_conf = [tx, tz, ty]
+        colide = collision_fn(rand_conf)
         if not colide:
-            q_rand.set_parent(q_near)
-            T.append(q_rand)
-            if flag:
-                pathFound = True
-    return Gen_path(q_rand)
+            sample_x.append(tx)
+            sample_y.append(ty)
+            sample_z.append(tz)
 
-def BiRRT():
-    #################################################
-    # TODO your code to implement the birrt algorithm
-    #################################################
-    T_start = [RRT_Node(start_conf)]
-    T_goal = [RRT_Node(goal_conf)]
-    pathFound = False
-    i = 0
-    while pathFound == False:
-        i += 1
-        q_rand, flag = sample_conf()
-        if i % 2 == 0:
-            Ta = T_start
-            Tb = T_goal
-        else:
-            Ta = T_goal
-            Tb = T_start
+    sample_x.append(start_conf[0])
+    sample_y.append(start_conf[1])
+    sample_z.append(start_conf[2])
+    sample_x.append(goal_conf[0])
+    sample_y.append(goal_conf[1])
+    sample_z.append(goal_conf[2])
+    return sample_x, sample_y, sample_z
 
-        q_neara = find_nearest(q_rand, Ta)
-        q_steer= steer_to_until(q_rand, q_neara)
-        q_steer.set_parent(q_neara)
-        if i % 2 == 0:
-            T_start.append(q_steer)
-        else:
-            T_goal.append(q_steer)
-        # Tb
-        q_nearb = find_nearest(q_steer, Tb)
-        colide = steer_to(q_rand, q_nearb)
-        if not colide:
-            pathFound = True
+def generate_road_map(sample_x, sample_y, sample_z):
+    road_map = []
+    n_sample = len(sample_x)
+    sample_kd_tree = KDTree(np.vstack((sample_x, sample_y, sample_z)).T)
 
-    first_path = Gen_path(q_steer)
-    second_path = Gen_path(q_nearb)
-    if i % 2 == 0:
-        path = np.concatenate((first_path,np.flip(second_path,axis=0)), axis=0)
-    else:
-        path = np.concatenate((second_path, np.flip(first_path, axis=0)), axis=0)
-    return path
+    for (i, ix, iy, iz) in zip(range(n_sample), sample_x, sample_y, sample_z):
+        dists, indexes = sample_kd_tree.query([ix, iy, iz], k=n_sample)
+        edge_id = []
+        for ii in range(1, len(indexes)):
+            nx = sample_x[indexes[ii]]
+            ny = sample_y[indexes[ii]]
+            nz = sample_z[indexes[ii]]
 
-def Gen_path(node):
-    last_node = node
-    path = np.array(last_node.conf).reshape(1,3)
-    while last_node.parent:
-        last_node = last_node.parent
-        path = np.concatenate((last_node.conf.reshape(1,3),path), axis=0)
-    return path
+            colide = steer_to([ix, iy, iz], [nx, ny, nz])
+            if not colide:
+                edge_id.append(indexes[ii])
 
-def BiRRT_smoothing():
-    ################################################################
-    # TODO your code to implement the birrt algorithm with smoothing
-    ################################################################
-    path = BiRRT()
-    print(path.shape[0])
-    for i in range(200):
-        n = path.shape[0]-1
-        index1 = random.randint(0, n)
-        index2 = random.randint(0, n)
-        colide = steer_to(RRT_Node(path[index1]), RRT_Node(path[index2]))
-        if not colide:
-            path = np.delete(path, slice(min(index1,index2)+1,max(index1,index2)), 0)
-    return path
+            if len(edge_id) >= N_KNN:
+                break
+        road_map.append(edge_id)
+    return road_map
+
 ###############################################################################
 #your implementation ends here
 
@@ -212,28 +226,14 @@ if __name__ == "__main__":
     goal_marker = draw_sphere_marker(position=goal_position, radius=0.02, color=[1, 0, 0, 1])
     set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
 
-    
-		# place holder to save the solution path
-    path_conf = None
-
     # get the collision checking function
     from collision_utils import get_collision_fn
     collision_fn = get_collision_fn(ur5, UR5_JOINT_INDICES, obstacles=obstacles,
                                        attachments=[], self_collisions=True,
                                        disabled_collisions=set())
 
-    if args.birrt:
-        if args.smoothing:
-            # using birrt with smoothing
-            path_conf = BiRRT_smoothing()
-        else:
-            # using birrt without smoothing
-            path_conf = BiRRT()
-    else:
-        # using rrt
-        path_conf = RRT()
-        # path_conf = BiRRT()
-        # path_conf = BiRRT_smoothing()
+    path_conf = prm_planning(start_conf, goal_conf)
+
 
     if path_conf is None:
         # pause here
