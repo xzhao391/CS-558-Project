@@ -50,29 +50,45 @@ class Node:
         self.cost = cost
         self.parent_index = parent_index
 
+# def steer_to(rand_conf, nearest_conf):
+#     rand_conf = np.array(rand_conf)
+#     nearest_conf = np.array(nearest_conf)
+#     diff = rand_conf - nearest_conf
+#     L = np.linalg.norm(diff)
+#     n = math.floor(L/.05)
+#     if n > 0:
+#         dir = .05*diff/L
+#     colide = collision_fn(rand_conf)
+#     i = 0
+#     while i < n:
+#         if colide == True: break
+#         i+=1
+#         new_node = i*dir+nearest_conf
+#         colide = collision_fn(new_node)
+#     return colide
+        
 def steer_to(rand_conf, nearest_conf):
-    rand_conf = np.array(rand_conf)
-    nearest_conf = np.array(nearest_conf)
-    diff = rand_conf - nearest_conf
-    L = np.linalg.norm(diff)
-    n = math.floor(L/.05)
-    if n > 0:
-        dir = .05*diff/L
-    colide = collision_fn(rand_conf)
-    i = 0
-    while i < n:
-        if colide == True: break
-        i+=1
-        new_node = i*dir+nearest_conf
-        colide = collision_fn(new_node)
-    return colide
+    # Interpolate between the two nodes with a step size of 0.05
+    step_size = 0.05
+    num_steps = int(1 / step_size)
+
+    for i in range(num_steps + 1):
+        t = i * step_size
+        intermediate_conf = [(1-t)*nearest_conf[j] + t*rand_conf[j] for j in range(len(nearest_conf))]
+        # print(i, ': intermediate_conf', intermediate_conf)
+        if collision_fn(intermediate_conf):
+            # print('collision!')
+            return False
+    
+    # If the entire path is collision-free, return True
+    return True
 
 def prm_planning(road_map, start_conf, goal_conf):
     sample_x, sample_y, sample_z = sample_points(start_conf, goal_conf)
+    # samples = (sample_x, sample_y, sample_z)
 
     if road_map is None:
         road_map = generate_road_map(sample_x, sample_y, sample_z)
-    # road_map = generate_road_map(sample_x, sample_y, sample_z)
 
     rx, ry, rz = dijkstra_planning(start_conf, goal_conf, road_map, sample_x, sample_y, sample_z)
 
@@ -80,6 +96,15 @@ def prm_planning(road_map, start_conf, goal_conf):
     for i in reversed(range(len(rx))):
         path_conf.append([rx[i], ry[i], rz[i]])
     return road_map, path_conf
+
+# def generate_waypoint(start_conf, goal_conf, samples):
+#     (sample_x, sample_y, sample_z) = samples
+#     rx, ry, rz = dijkstra_planning(start_conf, goal_conf, road_map, sample_x, sample_y, sample_z)
+
+#     path_conf = []
+#     for i in reversed(range(len(rx))):
+#         path_conf.append([rx[i], ry[i], rz[i]])
+#     return path_conf
 
 def dijkstra_planning(start_conf, goal_conf, road_map, sample_x, sample_y, sample_z):
     open_set, closed_set = dict(), dict()
@@ -135,14 +160,12 @@ def dijkstra_planning(start_conf, goal_conf, road_map, sample_x, sample_y, sampl
         parent_index = n.parent_index
     return rx, ry, rz
 
-
-
 def sample_points(start_conf, goal_conf):
     sample_x, sample_y, sample_z = [], [], []
     while len(sample_x) <= N_SAMPLE:
-        tx = np.random.uniform(goal_conf[0]-1.6, goal_conf[0]+.1)
-        ty = np.random.uniform(goal_conf[1]-.1, goal_conf[1]+.5)
-        tz = np.random.uniform(goal_conf[2]-.1, goal_conf[2]+.5)
+        tx = np.random.uniform(-2*np.pi, 2*np.pi)
+        ty = np.random.uniform(-2*np.pi, 2*np.pi)
+        tz = np.random.uniform(-np.pi, np.pi)
         rand_conf = [tx, tz, ty]
         colide = collision_fn(rand_conf)
         if not colide:
@@ -162,9 +185,17 @@ def generate_road_map(sample_x, sample_y, sample_z):
     road_map = []
     n_sample = len(sample_x)
     sample_kd_tree = KDTree(np.vstack((sample_x, sample_y, sample_z)).T)
+    d = 3  # dimension of the space
+    gamma_prm = 50
 
-    for (i, ix, iy, iz) in zip(range(n_sample), sample_x, sample_y, sample_z):
-        dists, indexes = sample_kd_tree.query([ix, iy, iz], k=n_sample)
+    for (iter, ix, iy, iz) in zip(range(n_sample), sample_x, sample_y, sample_z):
+        k = 0
+        if iter is not 0:
+            k = int(gamma_prm * (np.log(iter) / iter) ** (1.0 / d))
+        k = max(1, min(k, iter - 1))
+        print(f'iter={iter}, k={k}')
+
+        dists, indexes = sample_kd_tree.query([ix, iy, iz], k=k+1)
         edge_id = []
         for ii in range(1, len(indexes)):
             nx = sample_x[indexes[ii]]
@@ -206,39 +237,65 @@ if __name__ == "__main__":
     # load robot
     ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 0, 0.02], useFixedBase=True)
 
-    # start and goal
-    start_conf = (-0.813358794499552, -0.37120422397572495, -0.754454729356351)
-    start_position = (0.3998897969722748, -0.3993956744670868, 0.6173484325408936)
-    goal_conf = (0.7527214782907734, -0.6521867735052328, -0.4949270744967443)
-    goal_position = (0.35317009687423706, 0.35294029116630554, 0.7246701717376709)
-    goal_marker = draw_sphere_marker(position=goal_position, radius=0.02, color=[1, 0, 0, 1])
-    set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
-
     # get the collision checking function
     from collision_utils import get_collision_fn
     collision_fn = get_collision_fn(ur5, UR5_JOINT_INDICES, obstacles=obstacles,
                                        attachments=[], self_collisions=True,
                                        disabled_collisions=set())
 
-    # # initialize road_map
-    # sample_x, sample_y, sample_z = sample_points(start_conf, goal_conf)
-    # road_map = generate_road_map(sample_x, sample_y, sample_z)
-
-    # # generate waypoints
-    # path_conf = prm_planning(road_map, start_conf, goal_conf)
-    # print(path_conf)
-
+    # initialize road map
     road_map = None
+
+    # first start-goal test
+    start_conf = (-0.813, -0.371, -0.754)
+    goal_conf = (0.752, -0.652, -0.494)
+    set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
+
     road_map, path_conf = prm_planning(road_map, start_conf, goal_conf)
     print(path_conf)
-
+    
     if path_conf is None:
         # pause here
         input("no collision-free path is found within the time budget, finish?")
     else:
-        # execute the path
-        while True:
-            for q in path_conf:
-                set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-                time.sleep(0.3)
-            time.sleep(1)
+        # execute the first path
+        for q in path_conf:
+            set_joint_positions(ur5, UR5_JOINT_INDICES, q)
+            time.sleep(0.5)
+        time.sleep(2)
+    print('first test done!')
+    
+    # # second start-goal test
+    # start_conf = (-0.3, -0.5, 0.75)
+    # goal_conf = (-1.3, -0.2, -0.9)
+    # set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
+
+    # road_map, path_conf = prm_planning(road_map, start_conf, goal_conf)
+    # print(path_conf)
+
+    # if path_conf is None:
+    #     # pause here
+    #     input("no collision-free path is found within the time budget, finish?")
+    # else:
+    #     # execute the first path
+    #     for q in path_conf:
+    #         set_joint_positions(ur5, UR5_JOINT_INDICES, q)
+    #         time.sleep(0.5)
+    #     time.sleep(2)
+    # print('second test done!')
+
+    # # third start-goal test
+    # start_conf = (0.752, -0.652, -0.494)
+    # goal_conf = (-1.3, -0.2, -0.9)
+    # set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
+
+    # if path_conf is None:
+    #     # pause here
+    #     input("no collision-free path is found within the time budget, finish?")
+    # else:
+    #     # execute the first path
+    #     for q in path_conf:
+    #         set_joint_positions(ur5, UR5_JOINT_INDICES, q)
+    #         time.sleep(0.5)
+    #     time.sleep(2)
+    # print('third test done!')
