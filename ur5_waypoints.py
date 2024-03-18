@@ -8,7 +8,7 @@ import math
 import os
 import sys
 import random
-
+import csv
 # PRMstar
 from scipy.spatial import KDTree
 
@@ -100,7 +100,7 @@ def dijkstra_planning(start_conf, goal_conf, reverse_i, road_map, sample_x, samp
         current = open_set[c_id]
 
         if c_id == (len(road_map) - 2*reverse_i - 1):
-            print("goal is found!")
+            # print("goal is found!")
             goal_node.parent_index = current.parent_index
             goal_node.cost = current.cost
             break
@@ -172,7 +172,7 @@ def generate_road_map(sample_x, sample_y, sample_z):
         if iter is not 0:
             k = int(gamma_prm * (np.log(iter) / iter) ** (1.0 / d))
         k = max(1, min(k, iter - 1))
-        print(f'iter={iter}, k={k}')
+        # print(f'iter={iter}, k={k}')
 
         dists, indexes = sample_kd_tree.query([ix, iy, iz], k=k+1)
         edge_id = []
@@ -224,56 +224,32 @@ if __name__ == "__main__":
 
     # initialize road map
     road_map = None
-
-    # first start-goal test
-    start_list = [(-0.3, -0.5, 0.75), (0.752, -0.652, -0.494), (-0.813358794499552, -0.37120422397572495, -0.754454729356351)]
-    goal_list = [(-1.3, -0.2, -0.9), (-1.3, -0.2, -0.9), (0.7527214782907734, -0.6521867735052328, -0.4949270744967443)]
+    start_list = []
+    goal_list = []
+    i = 0
+    while i < 600:
+        start_node = (np.random.uniform(-np.pi, np.pi),
+                           np.random.uniform(-np.pi, np.pi),
+                           np.random.uniform(-np.pi, np.pi))
+        goal_node = (np.random.uniform(-np.pi, np.pi),
+                           np.random.uniform(-np.pi, np.pi),
+                           np.random.uniform(-np.pi, np.pi))
+        if (not collision_fn(start_node)) and (not collision_fn(goal_node)):
+            start_list.append(start_node)
+            goal_list.append(goal_node)
+            i += 1
     path_list = prm_planning(road_map, start_list, goal_list)
+    data = []
     for i in range(len(start_list)):
-        set_joint_positions(ur5, UR5_JOINT_INDICES, start_list[i])
-        print(path_list[i])
-        if path_list[i] is None:
-            # pause here
-            input("no collision-free path is found within the time budget, finish?")
+        if path_list[i]==[]:
+            continue
         else:
-            # execute the first path
-            for q in path_list[i]:
-                set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-                time.sleep(0.5)
-            time.sleep(2)
-        print('first test done!')
-    
-    # # second start-goal test
-    # start_conf = (-0.3, -0.5, 0.75)
-    # goal_conf = (-1.3, -0.2, -0.9)
-    # set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
-
-    # road_map, path_conf = prm_planning(road_map, start_conf, goal_conf)
-    # print(path_conf)
-
-    # if path_conf is None:
-    #     # pause here
-    #     input("no collision-free path is found within the time budget, finish?")
-    # else:
-    #     # execute the first path
-    #     for q in path_conf:
-    #         set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-    #         time.sleep(0.5)
-    #     time.sleep(2)
-    # print('second test done!')
-
-    # # third start-goal test
-    # start_conf = (0.752, -0.652, -0.494)
-    # goal_conf = (-1.3, -0.2, -0.9)
-    # set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
-
-    # if path_conf is None:
-    #     # pause here
-    #     input("no collision-free path is found within the time budget, finish?")
-    # else:
-    #     # execute the first path
-    #     for q in path_conf:
-    #         set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-    #         time.sleep(0.5)
-    #     time.sleep(2)
-    # print('third test done!')
+            set_joint_positions(ur5, UR5_JOINT_INDICES, start_list[i])
+            data.append(path_list[i])
+            # for q in path_list[i]:
+            #     set_joint_positions(ur5, UR5_JOINT_INDICES, q)
+            #     time.sleep(0.5)
+            # time.sleep(2)
+    with open('dataset.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(data)
