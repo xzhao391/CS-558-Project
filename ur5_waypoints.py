@@ -16,7 +16,7 @@ from scipy.spatial import KDTree
 UR5_JOINT_INDICES = [0, 1, 2]
 
 # parameter
-N_SAMPLE = 500  # number of sample_points
+N_SAMPLE = 800  # number of sample_points
 N_KNN = 10  # number of edge from one sampled point
 MAX_EDGE_LEN = 30.0  # [m] Maximum edge length
 
@@ -172,7 +172,7 @@ def generate_road_map(sample_x, sample_y, sample_z):
         if iter is not 0:
             k = int(gamma_prm * (np.log(iter) / iter) ** (1.0 / d))
         k = max(1, min(k, iter - 1))
-        print(f'iter={iter}, k={k}')
+        # print(f'iter={iter}, k={k}')
 
         dists, indexes = sample_kd_tree.query([ix, iy, iz], k=k+1)
         edge_id = []
@@ -201,20 +201,32 @@ if __name__ == "__main__":
     p.setGravity(0, 0, -9.8)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, False)
     p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, True)
-    p.resetDebugVisualizerCamera(cameraDistance=1.400, cameraYaw=58.000, cameraPitch=-42.200, cameraTargetPosition=(0.0, 0.0, 0.0))
+    p.resetDebugVisualizerCamera(cameraDistance=23.60, cameraYaw=58.000, cameraPitch=-42.200, cameraTargetPosition=(0.0, 0.0, 0.0))
 
     # load objects
     plane = p.loadURDF("plane.urdf")
-    obstacle1 = p.loadURDF('assets/block.urdf',
-                           basePosition=[1/4, 0, 1/2],
-                           useFixedBase=True)
-    obstacle2 = p.loadURDF('assets/block.urdf',
-                           basePosition=[2/4, 0, 2/3],
-                           useFixedBase=True)
-    obstacles = [plane, obstacle1, obstacle2]
+    obstacles = [plane]
+    obstacle_xyz = [[ 10.374696 ,   12.402063  ,  10.9207115 ],
+                    [ -4.187111 ,    9.439998  , -14.205707  ],
+                    [ 12.065512 ,    4.9649725 , -10.829719  ],
+                    [  4.6687045,    4.034849  ,  -0.5135859 ],
+                    [ -0.71889645,  -0.38771427,   5.7259583 ],
+                    [-11.277511  ,   3.5690885 , -14.776423  ],
+                    [ -9.015153  ,  -1.0562156 ,  12.62564   ],
+                    [-12.584196  ,   1.1506163 ,   9.944185  ],
+                    [  2.3307815 ,  -9.180679  ,  -1.0209659 ],
+                    [ -5.455794  ,  -6.490853  ,   7.518958  ]]
+
+    for i, obs in enumerate(obstacle_xyz):
+        obstacle = p.loadURDF(f'assets/blocks/block{i+1}.urdf',
+                            basePosition=obs,
+                            useFixedBase=True)
+        obstacles.append(obstacle)
+    
 
     # load robot
-    ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 0, 0.02], useFixedBase=True)
+    ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 10, 0.02], useFixedBase=True, globalScaling=20)
+
 
     # get the collision checking function
     from collision_utils import get_collision_fn
@@ -225,55 +237,29 @@ if __name__ == "__main__":
     # initialize road map
     road_map = None
 
-    # first start-goal test
     start_list = [(-0.3, -0.5, 0.75), (0.752, -0.652, -0.494), (-0.813358794499552, -0.37120422397572495, -0.754454729356351)]
-    goal_list = [(-1.3, -0.2, -0.9), (-1.3, -0.2, -0.9), (0.7527214782907734, -0.6521867735052328, -0.4949270744967443)]
-    path_list = prm_planning(road_map, start_list, goal_list)
+
     for i in range(len(start_list)):
         set_joint_positions(ur5, UR5_JOINT_INDICES, start_list[i])
-        print(path_list[i])
-        if path_list[i] is None:
-            # pause here
-            input("no collision-free path is found within the time budget, finish?")
-        else:
-            # execute the first path
-            for q in path_list[i]:
-                set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-                time.sleep(0.5)
-            time.sleep(2)
-        print('first test done!')
+    p.stepSimulation()
+
+    time.sleep(14)
+
+    # # first start-goal test
+    # start_list = [(-0.3, -0.5, 0.75), (0.752, -0.652, -0.494), (-0.813358794499552, -0.37120422397572495, -0.754454729356351)]
+    # goal_list = [(-1.3, -0.2, -0.9), (-1.3, -0.2, -0.9), (0.7527214782907734, -0.6521867735052328, -0.4949270744967443)]
+    # path_list = prm_planning(road_map, start_list, goal_list)
+    # for i in range(len(start_list)):
+    #     set_joint_positions(ur5, UR5_JOINT_INDICES, start_list[i])
+    #     print(path_list[i])
+    #     if path_list[i] is None:
+    #         # pause here
+    #         input("no collision-free path is found within the time budget, finish?")
+    #     else:
+    #         # execute the first path
+    #         for q in path_list[i]:
+    #             set_joint_positions(ur5, UR5_JOINT_INDICES, q)
+    #             time.sleep(0.5)
+    #         time.sleep(2)
+    #     print(f'test {i} done!')
     
-    # # second start-goal test
-    # start_conf = (-0.3, -0.5, 0.75)
-    # goal_conf = (-1.3, -0.2, -0.9)
-    # set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
-
-    # road_map, path_conf = prm_planning(road_map, start_conf, goal_conf)
-    # print(path_conf)
-
-    # if path_conf is None:
-    #     # pause here
-    #     input("no collision-free path is found within the time budget, finish?")
-    # else:
-    #     # execute the first path
-    #     for q in path_conf:
-    #         set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-    #         time.sleep(0.5)
-    #     time.sleep(2)
-    # print('second test done!')
-
-    # # third start-goal test
-    # start_conf = (0.752, -0.652, -0.494)
-    # goal_conf = (-1.3, -0.2, -0.9)
-    # set_joint_positions(ur5, UR5_JOINT_INDICES, start_conf)
-
-    # if path_conf is None:
-    #     # pause here
-    #     input("no collision-free path is found within the time budget, finish?")
-    # else:
-    #     # execute the first path
-    #     for q in path_conf:
-    #         set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-    #         time.sleep(0.5)
-    #     time.sleep(2)
-    # print('third test done!')
