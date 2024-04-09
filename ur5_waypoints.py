@@ -201,10 +201,12 @@ if __name__ == "__main__":
     p.setGravity(0, 0, -9.8)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, False)
     p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, True)
-    p.resetDebugVisualizerCamera(cameraDistance=23.60, cameraYaw=58.000, cameraPitch=-42.200, cameraTargetPosition=(0.0, 0.0, 0.0))
+    p.resetDebugVisualizerCamera(cameraDistance=23.60, cameraYaw=58.000, cameraPitch=-42.200,
+                                 cameraTargetPosition=(0.0, 0.0, 0.0))
 
     # load objects
     plane = p.loadURDF("plane.urdf")
+    obstacles = []
     obstacles = [plane]
     obstacle_xyz = [[ 10.374696 ,   12.402063  ,  10.9207115 ],
                     [ -4.187111 ,    9.439998  , -14.205707  ],
@@ -216,23 +218,21 @@ if __name__ == "__main__":
                     [-12.584196  ,   1.1506163 ,   9.944185  ],
                     [  2.3307815 ,  -9.180679  ,  -1.0209659 ],
                     [ -5.455794  ,  -6.490853  ,   7.518958  ]]
-
     for i, obs in enumerate(obstacle_xyz):
         obstacle = p.loadURDF(f'assets/blocks/block{i+1}.urdf',
                             basePosition=obs,
                             useFixedBase=True)
         obstacles.append(obstacle)
-    
 
     # load robot
-    ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 10, 0.02], useFixedBase=True, globalScaling=20)
-
+    ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 10, 0.2], useFixedBase=True, globalScaling=20)
 
     # get the collision checking function
     from collision_utils import get_collision_fn
+
     collision_fn = get_collision_fn(ur5, UR5_JOINT_INDICES, obstacles=obstacles,
-                                       attachments=[], self_collisions=True,
-                                       disabled_collisions=set())
+                                    attachments=[], self_collisions=True,
+                                    disabled_collisions=set())
 
     # initialize road map
     road_map = None
@@ -241,9 +241,9 @@ if __name__ == "__main__":
 
     for i in range(len(start_list)):
         set_joint_positions(ur5, UR5_JOINT_INDICES, start_list[i])
+        print(collision_fn(start_list[i]))
+        time.sleep(2)
     p.stepSimulation()
-
-    time.sleep(14)
 
     # # first start-goal test
     # start_list = [(-0.3, -0.5, 0.75), (0.752, -0.652, -0.494), (-0.813358794499552, -0.37120422397572495, -0.754454729356351)]

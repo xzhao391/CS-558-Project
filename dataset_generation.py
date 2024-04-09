@@ -1,3 +1,5 @@
+
+
 from __future__ import division
 import pybullet as p
 import pybullet_data
@@ -82,11 +84,29 @@ def prm_planning(road_map, start_list, goal_list):
         rx, ry, rz = dijkstra_planning(start_list[i], goal_list[i], n - i - 1, road_map, sample_x, sample_y, sample_z)
 
         path_conf = []
-        for i in reversed(range(len(rx))):
-            path_conf.append([rx[i], ry[i], rz[i]])
+        for j in reversed(range(len(rx))):
+            path_conf.append([rx[j], ry[j], rz[j]])
+        path_conf = smoothing(path_conf)
         path_list.append(path_conf)
+        print(i)
     return path_list
 
+def smoothing(path):
+    ################################################################
+    # TODO your code to implement the birrt algorithm with smoothing
+    ################################################################
+    if len(path) <= 2:
+        return path
+    else:
+        for i in range(100):
+            n = len(path)-1
+            index1 = random.randint(0, n)
+            index2 = random.randint(0, n)
+            colide = steer_to(path[index1], path[index2])
+            if not colide:
+                path = np.delete(path, slice(min(index1,index2)+1,max(index1,index2)), 0)
+    path = path.tolist()
+    return path
 
 def dijkstra_planning(start_conf, goal_conf, reverse_i, road_map, sample_x, sample_y, sample_z):
     open_set, closed_set = dict(), dict()
@@ -207,21 +227,31 @@ if __name__ == "__main__":
     p.setGravity(0, 0, -9.8)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, False)
     p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, True)
-    p.resetDebugVisualizerCamera(cameraDistance=1.400, cameraYaw=58.000, cameraPitch=-42.200,
+    p.resetDebugVisualizerCamera(cameraDistance=35.0, cameraYaw=158.000, cameraPitch=-40.00,
                                  cameraTargetPosition=(0.0, 0.0, 0.0))
 
     # load objects
     plane = p.loadURDF("plane.urdf")
-    obstacle1 = p.loadURDF('assets/block.urdf',
-                           basePosition=[1 / 4, 0, 1 / 2],
-                           useFixedBase=True)
-    obstacle2 = p.loadURDF('assets/block.urdf',
-                           basePosition=[2 / 4, 0, 2 / 3],
-                           useFixedBase=True)
-    obstacles = [plane, obstacle1, obstacle2]
+    obstacles = []
+    obstacles = [plane]
+    obstacle_xyz = [[ 10.374696 ,   12.402063  ,  10.9207115 ],
+                    [ -4.187111 ,    9.439998  , -14.205707  ],
+                    [ 12.065512 ,    4.9649725 , -10.829719  ],
+                    [  4.6687045,    4.034849  ,  -0.5135859 ],
+                    [ -0.71889645,  -0.38771427,   5.7259583 ],
+                    [-11.277511  ,   3.5690885 , -14.776423  ],
+                    [ -9.015153  ,  -1.0562156 ,  12.62564   ],
+                    [-12.584196  ,   1.1506163 ,   9.944185  ],
+                    [  2.3307815 ,  -9.180679  ,  -1.0209659 ],
+                    [ -5.455794  ,  -6.490853  ,   7.518958  ]]
+    for i, obs in enumerate(obstacle_xyz):
+        obstacle = p.loadURDF(f'assets/blocks/block{i+1}.urdf',
+                            basePosition=obs,
+                            useFixedBase=True)
+        obstacles.append(obstacle)
 
     # load robot
-    ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 0, 0.02], useFixedBase=True)
+    ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 10, 0.2], useFixedBase=True, globalScaling=20)
 
     # get the collision checking function
     from collision_utils import get_collision_fn
@@ -234,30 +264,39 @@ if __name__ == "__main__":
     road_map = None
     start_list = []
     goal_list = []
-    i = 0
-    while i < 500:
-        start_node = (np.random.uniform(-np.pi, np.pi),
-                      np.random.uniform(-np.pi, np.pi),
-                      np.random.uniform(-np.pi, np.pi))
-        goal_node = (np.random.uniform(-np.pi, np.pi),
-                     np.random.uniform(-np.pi, np.pi),
-                     np.random.uniform(-np.pi, np.pi))
+    i = 1999
+    while i < 2000:
+        # start_node = (np.random.uniform(-np.pi, np.pi),
+        #               np.random.uniform(-np.pi, np.pi),
+        #               np.random.uniform(-np.pi, np.pi))
+        # goal_node = (np.random.uniform(-np.pi, np.pi),
+        #              np.random.uniform(-np.pi, np.pi),
+        #              np.random.uniform(-np.pi, np.pi))
+        # start_node = [-0.6+np.random.uniform(-1, 1), -0.5+np.random.uniform(-1, 1), -0.75+np.random.uniform(-1, 1)]
+        # goal_node = [.7+np.random.uniform(-1, 1), -0.5+np.random.uniform(-1, 1), -0.75+np.random.uniform(-1, 1)]
+        start_node = [-0.6, -0.5, -0.75]
+        goal_node = [.7, -0.5, -0.75]
         if (not collision_fn(start_node)) and (not collision_fn(goal_node)):
             start_list.append(start_node)
             goal_list.append(goal_node)
             i += 1
     path_list = prm_planning(road_map, start_list, goal_list)
-    data = []
+    path = 2000
+    folder = '../milestone2/path/path'
     for i in range(len(start_list)):
         if path_list[i] == []:
             continue
         else:
-            set_joint_positions(ur5, UR5_JOINT_INDICES, start_list[i])
-            data.append(path_list[i])
+            np.savetxt(folder+str(path)+'.dat', path_list[i])
+            path += 1
             # for q in path_list[i]:
             #     set_joint_positions(ur5, UR5_JOINT_INDICES, q)
-            #     time.sleep(0.5)
-            # time.sleep(2)
-    with open('dataset.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerows(data)
+            #     time.sleep(2)
+
+# start_node = [-0.6, -0.5, -0.75]
+# set_joint_positions(ur5, UR5_JOINT_INDICES, start_node)
+# collision_fn(start_node)
+#
+# goal_node = [.7, -0.5, -0.75]
+# set_joint_positions(ur5, UR5_JOINT_INDICES, goal_node)
+# collision_fn(goal_node)
