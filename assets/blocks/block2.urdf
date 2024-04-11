@@ -13,7 +13,7 @@
         <box size="5 10 5" />
       </geometry>
       <material name="transparent_black">
-        <color rgba="0.0 0.0 1.0 1.0" />
+        <color rgba="0.0 0.1 0.1 0.5" />
       </material>
     </visual>
     <collision>

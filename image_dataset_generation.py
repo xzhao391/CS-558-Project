@@ -9,6 +9,8 @@ import os
 import sys
 import random
 from scipy.spatial.transform import Rotation as R
+import csv
+import pickle
 
 # PRMstar
 from scipy.spatial import KDTree
@@ -17,7 +19,7 @@ from scipy.spatial import KDTree
 UR5_JOINT_INDICES = [0, 1, 2]
 
 # parameter
-N_SAMPLE = 10  # number of sample_points
+N_SAMPLE = 200  # number of sample_points
 
 def set_joint_positions(body, joints, values):
     assert len(joints) == len(values)
@@ -89,12 +91,10 @@ def get_ur5_camera_transform(ur5):
     
     return eye_to_target
 
-def ur5_camera(ur5, camera_eye_to_target):
-    distance = 2
+def ur5_mounted_camera(ur5, camera_eye_to_target):
     img_w, img_h = 100, 100
 
     world_to_eef = p.getLinkState(ur5, 3, computeForwardKinematics=True)[:2]  # eef pose
-    roll, pitch, yaw = p.getEulerFromQuaternion(world_to_eef[1])
     xA, yA, zA = world_to_eef[0]
     zA = zA + 1.0  # make the camera a little higher than the robot
 
@@ -103,16 +103,8 @@ def ur5_camera(ur5, camera_eye_to_target):
     world_to_cameraTargetPose = p.multiplyTransforms(world_to_cameraEyePose[0], world_to_cameraEyePose[1],
                                                      camera_eye_to_target[0], camera_eye_to_target[1])
 
-    # compute focusing point of the camera
-    # xB = xA - math.cos(yaw) * distance
-    # yB = yA - math.sin(yaw) * distance
-    # zB = zA #- math.cos(yaw) * distance 
-    # xB = xA + 1.0
-    # yB = yA 
-    # zB = zA
-
-    draw_frame(world_to_cameraEyePose[0], world_to_cameraEyePose[1])
-    draw_frame(world_to_cameraTargetPose[0], world_to_cameraTargetPose[1])
+    # draw_frame(world_to_cameraEyePose[0], world_to_cameraEyePose[1])
+    # draw_frame(world_to_cameraTargetPose[0], world_to_cameraTargetPose[1])
 
     view_matrix = p.computeViewMatrix(
                         cameraEyePosition=world_to_cameraEyePose[0],
@@ -139,7 +131,7 @@ if __name__ == "__main__":
     p.setGravity(0, 0, -9.8)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, True)
     p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, True)
-    p.resetDebugVisualizerCamera(cameraDistance=25, cameraYaw=58.000, cameraPitch=-42.200, cameraTargetPosition=(0.0, 0.0, 0.0))
+    p.resetDebugVisualizerCamera(cameraDistance=27.5, cameraYaw=90.000, cameraPitch=-60.00, cameraTargetPosition=(-1.5, 7.5, 1.5))
 
     # load objects
     plane = p.loadURDF("plane.urdf")
@@ -166,32 +158,27 @@ if __name__ == "__main__":
     # load robot
     ur5 = p.loadURDF('assets/ur5/ur5.urdf', basePosition=[0, 10, 0.2], useFixedBase=True, globalScaling=20)
 
-    # load wall
-    wall1 = p.loadURDF('assets/walls/wall1.urdf', basePosition=[30, 20, 0.2], useFixedBase=True, globalScaling=20)
-
     # get the collision checking function
     from collision_utils import get_collision_fn
     collision_fn = get_collision_fn(ur5, UR5_JOINT_INDICES, obstacles=obstacles,
                                        attachments=[], self_collisions=True,
                                        disabled_collisions=set())
-    
-    # get camera transform constant
-    camera_eye_to_target = get_ur5_camera_transform(ur5)
 
-    conf = (-0.3, -0.5, 0.75)
+    conf_list = sample_robot_configs()
+    rgb_img_list = []
 
-    while True:
+    for conf in conf_list:
         set_joint_positions(ur5, UR5_JOINT_INDICES, conf)
-        ur5_camera(ur5, camera_eye_to_target)
         p.stepSimulation()
+        rgb_img = p.getCameraImage(200, 200, renderer=p.ER_BULLET_HARDWARE_OPENGL)[2]
+        rgb_img_list.append(rgb_img)
+    
+    np.savetxt('config-test.dat', conf_list)
 
-    # conf_list = [(-0.3, -0.5, 0.75), (0.752, -0.652, -0.494), (-0.813358794499552, -0.37120422397572495, -0.754454729356351)]
+    with open('rgb-test.dat', 'wb') as file:
+        pickle.dump(np.array(rgb_img_list), file)
 
-    # conf_list = sample_robot_configs()
-    # print(conf_list)
-
-    # for conf in conf_list:
-    #     set_joint_positions(ur5, UR5_JOINT_INDICES, conf)
-    #     ur5_camera(ur5, camera_eye_to_target)
-    #     p.stepSimulation()
-    #     time.sleep(3)
+    with open('rgb-test.dat', 'rb') as file:
+        loaded_data = pickle.load(file)
+    print(loaded_data.shape)
+    print(loaded_data[0])
