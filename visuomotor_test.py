@@ -16,6 +16,7 @@ os.sys.path.insert(0, parentdir)
 # Check for GPU
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
+
 # Preprocess dataset
 def preprocess_data(rgbPixels, height=200, width=200):
     rgb_tensor = torch.tensor(rgbPixels, dtype=torch.float).to(device)  # Convert to tensor and move to device
@@ -81,12 +82,12 @@ def calculate_accuracy(model, data_loader):
     rmse = np.sqrt(mean_loss)
     return rmse
 
-# Load and preprocess dataset
+# Load dataset
 conf_dataset = np.loadtxt('img_dataset/config.dat')
 with open('img_dataset/rgb.dat', 'rb') as file:
     rgb_dataset = pickle.load(file) 
 
-# Preprocess the RGB dataset using preprocess_data()
+# Preprocess the RGB dataset
 preprocessed_rgb_dataset = preprocess_data(rgb_dataset)
 print('loaded and preprocessed dataset')
 

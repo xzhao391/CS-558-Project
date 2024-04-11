@@ -1,7 +1,36 @@
-dataset_generation generates expert path from PRM* with smoothing 
+### Dataset Generation
+* How to generate expert path dataset from PRM* with smoothing 
+```
+python dataset_generation.py
+```
+* How to generate image dataset
+```
+python image_dataset_generation.py
+```
 
-mpnet_train trains the MPnet based on obstacle cloud and path
+### Training Network Models
+* How to train MPNet based on obstacle cloud and path
+```
+python mpnet_train.py
+```
+* How to train visual network
+```
+python visuomotor_train.py
+```
 
-mpnet_test can test multi paths same as assignment 3, new_net_test can test the network based on specific start and goal configuration
+### Testing Network Models
+* mpnet_test can test multi paths same as assignment 3
+* new_net_test can test the network based on specific start and goal configurations
+```
+python new_net_test.py
+```
+* How to test the accuracy for the trained visual network
+```
+python visuomotor_test.py
+```
+* How to run the demo for using the trained visual network in the simulator (testing for one config + image)
+```
+python visuomotor_demo.py
+```
 
-(the trained model is not posted due to the size limit)
+Note: datasets are not included due to the size limit
