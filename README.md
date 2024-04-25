@@ -33,4 +33,9 @@ python visuomotor_test.py
 python visuomotor_demo.py
 ```
 
+### Testing whole architecture
+* How to test the success rate of the whole architecture
+```
+python Multi_finalDemo.py
+
 Note: datasets are not included due to the size limit
