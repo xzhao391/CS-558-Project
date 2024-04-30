@@ -54,9 +54,9 @@ class VisuomotorCNN(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         self.regressor = nn.Sequential(
-            nn.Linear(16 * (img_width//2) * (img_height//2), 512),  # Adjust size according to your input image size and conv layers
+            nn.Linear(16 * (img_width//2) * (img_height//2), 512),
             nn.ReLU(),
-            nn.Linear(512, num_joints)  # num_joints is the number of robot joint configurations you have
+            nn.Linear(512, num_joints)
         )
 
     def to(self, device):
@@ -82,10 +82,35 @@ def calculate_accuracy(model, data_loader):
     rmse = np.sqrt(mean_loss)
     return rmse
 
-# Load dataset
-conf_dataset = np.loadtxt('img_dataset/config.dat')
-with open('img_dataset/rgb.dat', 'rb') as file:
+def calculate_percentage_accuracy(model, data_loader, tolerance=0.05):
+    correct_predictions = 0
+    total_predictions = 0
+
+    with torch.no_grad():
+        for inputs, labels in data_loader:
+            outputs = model(inputs)
+            # Calculate the absolute difference and check if within tolerance
+            absolute_difference = torch.abs(outputs - labels)
+            tolerance_threshold = tolerance * torch.abs(labels)
+            # Count predictions within the specified tolerance
+            correct_predictions += torch.sum(absolute_difference <= tolerance_threshold)
+            total_predictions += labels.numel()
+
+    # Calculate the percentage of predictions within the tolerance
+    accuracy = (correct_predictions.float() / total_predictions) * 100
+    return accuracy.item() 
+
+
+##### Load dataset (for limited range of robot configs)
+conf_dataset = np.loadtxt('img_dataset/config-test.dat')
+with open('img_dataset/rgb-test.dat', 'rb') as file:
     rgb_dataset = pickle.load(file) 
+
+##### Load dataset (for full feasible range of robot configs)
+# conf_dataset = np.loadtxt('img_dataset/config-full-test.dat')
+# with open('img_dataset/rgb-full-test2.dat', 'rb') as file:
+#     rgb_dataset = pickle.load(file)
+
 
 # Preprocess the RGB dataset
 preprocessed_rgb_dataset = preprocess_data(rgb_dataset)
@@ -95,12 +120,22 @@ print('loaded and preprocessed dataset')
 dataset = RobotConfigDataset(rgbPixels=preprocessed_rgb_dataset, labels=conf_dataset)
 test_loader = DataLoader(dataset, batch_size=4, shuffle=False)
 
-# Load the trained model
+##### Load the trained model (for limited range of robot configs)
+model_path = 'models/visuomotor_model.pth'
+
+##### Load the trained model (for full feasible range of robot configs)
+# model_path = 'models/visuomotor_model_full.pth'
+
 num_joints = 3
 model = VisuomotorCNN(num_joints=3, img_width=200, img_height=200).to(device)
-model.load_state_dict(torch.load('models/visuomotor_model.pth'))
+model.load_state_dict(torch.load(model_path))
 model.eval()
+print(f'Testing accuracy for the model: {model_path}')
 
 # Calculate the accuracy of the model on the test dataset
-accuracy = calculate_accuracy(model, test_loader)
-print(f"RMSE of the model on the test dataset: {accuracy}")
+rmse = calculate_accuracy(model, test_loader)
+print(f"RMSE of the model on the test dataset: {rmse}")
+
+tolerance=0.05
+accuracy = calculate_percentage_accuracy(model, test_loader)
+print(f'Accuracy within ±{tolerance*100}% tolerance: {accuracy}%')

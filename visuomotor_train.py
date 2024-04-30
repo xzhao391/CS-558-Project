@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, Dataset
 
 import pickle
 import numpy as np
+import matplotlib.pyplot as plt
 import sys
 import os
 import inspect
@@ -54,9 +55,9 @@ class VisuomotorCNN(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         self.regressor = nn.Sequential(
-            nn.Linear(16 * (img_width//2) * (img_height//2), 512),  # Adjust size according to your input image size and conv layers
+            nn.Linear(16 * (img_width//2) * (img_height//2), 512),
             nn.ReLU(),
-            nn.Linear(512, num_joints)  # num_joints is the number of robot joint configurations you have
+            nn.Linear(512, num_joints)
         )
 
     def to(self, device):
@@ -68,10 +69,15 @@ class VisuomotorCNN(nn.Module):
         x = self.regressor(x)
         return x
 
-# Load dataset
+##### Load dataset (for limited range of robot configs)
 conf_dataset = np.loadtxt('img_dataset/config.dat')
 with open('img_dataset/rgb.dat', 'rb') as file:
-    rgb_dataset = pickle.load(file) 
+    rgb_dataset = pickle.load(file)
+
+##### Load dataset (for full feasible range of robot configs)
+# conf_dataset = np.loadtxt('img_dataset/config-full3.dat')
+# with open('img_dataset/rgb-full2.dat', 'rb') as file:
+#     rgb_dataset = pickle.load(file)  
 
 # Preprocess the RGB dataset
 preprocessed_rgb_dataset = preprocess_data(rgb_dataset)
@@ -87,7 +93,8 @@ criterion = nn.MSELoss().to(device)
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
 # Training loop
-num_epochs = 10
+num_epochs = 30
+losses = []
 print('begin training..')
 for epoch in range(num_epochs):
     for inputs, labels in data_loader:
@@ -97,8 +104,20 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
     print(f'Epoch {epoch+1}, Loss: {loss.item()}')
+    losses.append(loss.item())
 
-# Save the trained model
+# Plot the loss per epoch
+plt.plot(losses)
+plt.title('Loss per Epoch')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.show()
+
+##### Save the trained model (for limited range of robot configs)
 model_path = 'models/visuomotor_model.pth'
+
+##### Save the trained model (for full feasible range of robot configs)
+# model_path = 'models/visuomotor_model_full.pth'
+
 torch.save(model.state_dict(), model_path)
 print('saved at ' + model_path)

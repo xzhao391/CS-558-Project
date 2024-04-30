@@ -82,9 +82,9 @@ class VisuomotorCNN(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         self.regressor = nn.Sequential(
-            nn.Linear(16 * (img_width//2) * (img_height//2), 512),  # Adjust size according to your input image size and conv layers
+            nn.Linear(16 * (img_width//2) * (img_height//2), 512),
             nn.ReLU(),
-            nn.Linear(512, num_joints)  # num_joints is the number of robot joint configurations you have
+            nn.Linear(512, num_joints) 
         )
 
     def to(self, device):
