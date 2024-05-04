@@ -1,3 +1,9 @@
+
+
+
+https://github.com/xzhao391/CS-558-Project/assets/107379730/f8d73533-7568-48ec-a919-a89ad7d3da80
+
+
 ### Dataset Generation
 * How to generate expert path dataset from PRM* with smoothing 
 ```
